@@ -27,7 +27,7 @@ viral_codelist = c("exeter_icd10_influenza.txt")
 #> Create empty dataframe
 df = data.frame() 
 
-#> Read all fungal data into df
+#> Read all fungal codes into df
 for (fungal in fungal_codelist){
   print(paste0("./Codes/", fungal))
   df = rbind(
@@ -41,7 +41,7 @@ for (fungal in fungal_codelist){
   )
 }
 
-#> Read all viral data into df
+#> Read all viral codes into df
 for (viral in viral_codelist){
   print(paste0("./Codes/", viral))
   df = rbind(
@@ -55,7 +55,7 @@ for (viral in viral_codelist){
   )
 }
 
-#> Read all viral data into df
+#> Read all bacterial codes into df
 for (bacterial in bacterial_codelist){
   print(paste0("./Codes/", bacterial))
   df = rbind(
@@ -69,7 +69,7 @@ for (bacterial in bacterial_codelist){
   )
 }
 
-#> CLeaning Up DF
+#> Cleaning Up DF
 df = df %>%
   rename(
     ICD10 = V1,
@@ -83,7 +83,6 @@ remove(bacterial, fungal, viral)
 ``` {r Export codelist df for DNANexus use}
 #> Writing file to csv for DNA Nexus use
 write.csv(df, "compiled_codelist.csv", row.names=FALSE)
-
 ```
 
 ``` {r Pull Codes:}

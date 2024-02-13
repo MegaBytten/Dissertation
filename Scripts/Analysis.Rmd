@@ -1,0 +1,582 @@
+---
+title: "Analysis"
+author: '700037484'
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+``` {r Packages & Init}
+#> ----------------------------- Packages & Init ---------------------------- <#
+
+#> automated package download and installation
+dependencies = c(
+  'pacman',
+  'tidyverse',
+  'ggridges',
+  'broom',
+  'broom.mixed',
+  'jtools',
+  'huxtable',
+  'cowplot',
+  'lmtest',
+  'foreign',
+  'AER',
+  'equatiomatic'
+)
+install.packages(dependencies)
+lapply(dependencies, library, character.only = TRUE)
+
+#> Download my codelist file: runs through terminal
+system('dx download file-Gfx8pY8Jj59zQzP567ypF5X9')
+
+#> Load in codelist data as compiled_codelist.csv
+infections_df = read_csv('infections_df_2024-01-31.csv')
+
+#> Creating directory for downloadable content in ZIP
+dir.create('saveables')
+dir.create('saveables/graphs')
+
+#> Clean Environment
+remove(dependencies)
+```
+
+``` {r Descriptive Stats Tables}
+#> store list of variables for repeated use
+list_baseline_vars = c("assess_age", "sex", 'diabetes_diagnosed', 'whr', 'glucose', 'hba1c', 'hdl_cholesterol', 'ldl_cholesterol', 'total_cholesterol', 'bmi', 'age_diabetes_diagnosed', 'th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs')
+
+#> function to manually rename variables to human-readable
+rename_vars = function(x) {
+  x = gsub("_", " ", x)  # Common: replace _ with " "
+  x = gsub("assess", "assessment", x)
+  x = gsub("whr", "waist-hip-ratio", x)
+  x = gsub("th grs", "two hour glucose GRS", x)  # Rename specific variables
+  x = gsub("fg grs", "fasting glucose GRS", x)
+  x = gsub("hba1c gly grs", "glycaemic hba1c GRS", x)
+  x = gsub("hba1c nongly grs", "non-glycaemic HbA1c GRS", x)
+  x = gsub("diabetes diagnosed", "Diabetes Prevalence", x)
+  return(x)
+}
+
+#> Generate descriptives table
+#>  - Modify categorical variables --> binary
+#>  - Summarise to create mean median mode, round mean and median
+temp = infections_df %>%
+  group_by(infection_type) %>%
+  mutate(
+    sex = ifelse(
+      sex == 'Male',
+      0,
+      ifelse(
+        sex == 'Female',
+        1,
+        NA
+      )
+    ),
+    diabetes_diagnosed = ifelse(
+      diabetes_diagnosed == 'Yes',
+      1,
+      ifelse(
+        diabetes_diagnosed == 'No',
+        0,
+        NA
+      )
+    ) 
+  ) %>%
+  summarise(across(
+    list_baseline_vars,
+    list(
+      mean = ~ round(mean(., na.rm = TRUE), 2),
+      median = ~ round(median(., na.rm = TRUE), 2),
+      N = ~ sum(!is.na(.))
+    )
+  ))
+
+#> Once Summary table has been created, loop through and collapse median mean N number columns into final formatted table
+#>  - Write reproducible code / R package for this? R packages for Descriptive tables are a pain in the a*
+var_index = 1
+formatted_temp = temp[, 1]
+
+for (i in seq(2, ncol(temp), by = 3)) {
+  var_data = temp[, i:(i + 2)]
+  colnames(var_data) = c('mean', 'median', 'n')
+
+  var_data = var_data %>%
+    mutate(!!sym(paste0(list_baseline_vars[var_index])) := paste0(mean, " | ", median, " (", n, ")")) %>%
+    select(4)
+  
+  formatted_temp = cbind(formatted_temp, var_data)
+
+  var_index = var_index + 1
+}
+
+formatted_temp = formatted_temp %>%
+    rename_with(rename_vars)
+
+# Flip columns rows of the dataframe
+desc_table = data.frame(t(formatted_temp[-1]))
+colnames(desc_table) = unlist(formatted_temp[, 1])
+
+# Saving as CSV
+write.csv(
+  desc_table,
+  file = paste0("saveables/", "descriptive_stats.csv")
+)
+
+# Clean environment
+remove(list_baseline_vars, rename_vars, temp, formatted_temp, var_index, var_data, i)
+```
+
+``` {r GRS TABLE (unrounded)}
+#> List of variables:
+list_baseline_vars = c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs')
+
+# Define a function to perform the renaming
+rename_vars = function(x) {
+  x = gsub("_", " ", x)  # Common: replace _ with " "
+  x = gsub("assess", "assessment", x)
+  x = gsub("whr", "waist-hip-ratio", x)
+  x = gsub("th grs", "two hour glucose GRS", x)  # Rename specific variables
+  x = gsub("fg grs", "fasting glucose GRS", x)
+  x = gsub("hba1c gly grs", "glycaemic hba1c GRS", x)
+  x = gsub("hba1c nongly grs", "non-glycaemic HbA1c GRS", x)
+  return(x)
+}
+
+# Apply the renaming function to the column names
+temp = infections_df %>%
+  group_by(infection_type) %>%
+  mutate(
+    sex = ifelse(
+      sex == 'Male',
+      0,
+      ifelse(
+        sex == 'Female',
+        1,
+        NA
+      )
+    )
+  ) %>%
+  summarise(across(
+    c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+    list(
+      mean = ~ round(mean(., na.rm = TRUE), 5),
+      median = ~ round(median(., na.rm = TRUE), 5),
+      N = ~ sum(!is.na(.))
+    )
+  ))
+
+#> Loop initiation
+var_index = 1
+formatted_temp = temp[, 1]
+
+for (i in seq(2, ncol(temp), by = 3)) {
+  var_data = temp[, i:(i + 2)]
+  colnames(var_data) = c('mean', 'median', 'n')
+
+  var_data = var_data %>%
+    mutate(!!sym(paste0(list_baseline_vars[var_index])) := paste0(mean, " | ", median, " (", n, ")")) %>%
+    select(4)
+  
+  formatted_temp = cbind(formatted_temp, var_data)
+
+  var_index = var_index + 1
+}
+
+formatted_temp = formatted_temp %>%
+    rename_with(rename_vars)
+
+# Flip columns rows of the dataframe
+grs_table = data.frame(t(formatted_temp[-1]))
+colnames(grs_table) = unlist(formatted_temp[, 1])
+
+# Saving as CSV
+write.csv(
+  grs_table,
+  file = paste0("saveables/", "grs_table.csv")
+)
+
+# Clean environment
+remove(list_baseline_vars, rename_vars, temp, formatted_temp, var_index, var_data, i)
+```
+
+``` {r Descriptive Graphs}
+list_graph_vars = c("assess_age", 'whr', 'glucose', 'hba1c', 'hdl_cholesterol', 'ldl_cholesterol', 'total_cholesterol', 'bmi', 'age_diabetes_diagnosed', 'th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs')
+
+for (var in list_graph_vars) {
+  # Filter out non-finite values for the current variable
+  plot_data = infections_df[is.finite(infections_df[[var]]), ] %>%
+    mutate(
+      hba1c = pmin(hba1c, 70),
+      glucose = pmin(glucose, 10),
+      bmi = pmin(bmi, 50),
+      whr = pmin(whr, 1.5),
+      ldl_cholesterol = pmin(ldl_cholesterol, 4),
+      total_cholesterol = pmin(total_cholesterol, 10),
+    )
+  
+  # Create and print the plot
+  p = ggplot(plot_data, aes(x = .data[[var]], y = infection_type, group = infection_type, colour = infection_type)) +
+    geom_density_ridges(alpha = 0.3)
+  
+  print(p)
+  
+  # Save the plot
+  ggsave(
+    paste0("./saveables/graphs/", var, "_graph_descriptives.png"),
+    plot = p
+  )
+}
+
+#> Clean Environment
+remove(p, plot_data, var)
+```
+
+``` {r Graph of Control vs Infection}
+# Plot using ggplot with facet_grid
+grs_graph = ggplot(
+  infections_df %>%
+    pivot_longer(
+      cols = c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+      names_to = "variable",
+      values_to = "value"
+    ),
+  aes(
+    x = value,
+    y = control,
+    group = interaction(control, variable),
+    colour = variable,
+    linetype = variable
+  )
+) +
+  geom_density_ridges(alpha = 0.3) +
+  labs(
+    x = "GRS",
+    y = "Freq. Density (Infected [false] vs Control [true])"
+  ) +
+  facet_grid(variable ~ ., scales = "free_y") +
+  coord_cartesian(ylim = c(0, NA))  # Set the lower limit to 0, upper limit to NA (no upper limit)
+
+
+
+ggsave(
+  paste0("./saveables/graphs/", "GRS_graphs.png"),
+  plot = grs_graph,
+  width = 10,
+  height = 8
+)
+
+#> Clean Env
+remove(grs_graph)
+```
+
+``` {r Graph of Mutiple infections vs Control}
+#> Want to compare patients who have had MULTIPLE infections against controls - because MULTIPLE infections usually more extreme
+
+
+#> ---------------------------------- VIRAL --------------------------------- <#
+#> Create a control vs multiple viral infections group
+temp = infections_df %>%
+  mutate(multiple_infections = ifelse(
+    viral_multiple == TRUE,
+    TRUE,
+    ifelse(
+      control == TRUE,
+      FALSE,
+      NA
+    )
+  )) %>%
+  filter(!is.na(multiple_infections))
+
+#> re-create GRS compairson plot of control vs Multi viral infection
+grs_graph = ggplot(
+  temp %>%
+    pivot_longer(
+      cols = c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+      names_to = "variable",
+      values_to = "value"
+    ),
+  aes(
+    x = value,
+    y = multiple_infections,
+    group = interaction(multiple_infections, variable),
+    colour = variable,
+    linetype = variable
+  )
+) +
+  geom_density_ridges(alpha = 0.3) +
+  labs(
+    x = "GRS",
+    y = "Freq. Density (Multiple infections [TRUE] vs Control [FALSE])"
+  ) +
+  facet_grid(variable ~ ., scales = "free_y") +
+  coord_cartesian(ylim = c(0, NA))  # Set the lower limit to 0, upper limit to NA (no upper limit)
+
+
+
+ggsave(
+  paste0("./saveables/graphs/", "mviral_control_grs_graph.png"),
+  plot = grs_graph,
+  width = 10,
+  height = 8
+)
+
+
+#> ------------------------------ Bacterial --------------------------------- <#
+#> Create a control vs multiple viral infections group
+temp = infections_df %>%
+  mutate(multiple_infections = ifelse(
+    bacterial_multiple == TRUE,
+    TRUE,
+    ifelse(
+      control == TRUE,
+      FALSE,
+      NA
+    )
+  )) %>%
+  filter(!is.na(multiple_infections))
+
+#> re-create GRS compairson plot of control vs Multi viral infection
+grs_graph = ggplot(
+  temp %>%
+    pivot_longer(
+      cols = c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+      names_to = "variable",
+      values_to = "value"
+    ),
+  aes(
+    x = value,
+    y = multiple_infections,
+    group = interaction(multiple_infections, variable),
+    colour = variable,
+    linetype = variable
+  )
+) +
+  geom_density_ridges(alpha = 0.3) +
+  labs(
+    x = "GRS",
+    y = "Freq. Density (Multiple infections [TRUE] vs Control [FALSE])"
+  ) +
+  facet_grid(variable ~ ., scales = "free_y") +
+  coord_cartesian(ylim = c(0, NA))  # Set the lower limit to 0, upper limit to NA (no upper limit)
+
+
+
+ggsave(
+  paste0("./saveables/graphs/", "mbacterial_control_grs_graph.png"),
+  plot = grs_graph,
+  width = 10,
+  height = 8
+)
+
+#> --------------------------------- FUNGAL --------------------------------- <#
+#> Create a control vs multiple viral infections group
+temp = infections_df %>%
+  mutate(multiple_infections = ifelse(
+    fungal_multiple == TRUE,
+    TRUE,
+    ifelse(
+      control == TRUE,
+      FALSE,
+      NA
+    )
+  )) %>%
+  filter(!is.na(multiple_infections))
+
+#> re-create GRS compairson plot of control vs Multi viral infection
+grs_graph = ggplot(
+  temp %>%
+    pivot_longer(
+      cols = c('th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+      names_to = "variable",
+      values_to = "value"
+    ),
+  aes(
+    x = value,
+    y = multiple_infections,
+    group = interaction(multiple_infections, variable),
+    colour = variable,
+    linetype = variable
+  )
+) +
+  geom_density_ridges(alpha = 0.3) +
+  labs(
+    x = "GRS",
+    y = "Freq. Density (Multiple infections [TRUE] vs Control [FALSE])"
+  ) +
+  facet_grid(variable ~ ., scales = "free_y") +
+  coord_cartesian(ylim = c(0, NA))  # Set the lower limit to 0, upper limit to NA (no upper limit)
+
+
+
+ggsave(
+  paste0("./saveables/graphs/", "mfungal_control_grs_graph.png"),
+  plot = grs_graph,
+  width = 10,
+  height = 8
+)
+
+#> Clean Environment
+remove(temp, grs_graph)
+```
+
+``` {r Mendelian Randomisation Analysis}
+#> -------------------------LINEAR ASSOCIATION ------------------------------ <#
+#> LINEAR ASSOCIATION: Genetic Glycaemia associated with increased HbA1c?
+
+# Linear model
+hba1c_gly_assoc=glm(
+  data = infections_df,
+  formula = hba1c ~ hba1c_glyc_grs,
+  na.action="na.exclude"
+)
+
+# Print nicely
+export_summs(
+  hba1c_gly_assoc,
+  confint = TRUE,
+  digits = 2
+)
+
+#> Only for exporting in LaTeX
+# extract_eq(hba1c_gly_assoc, wrap = TRUE, use_coefs = TRUE, terms_per_line = 1, coef_digits = 6) 
+
+#> F test?
+
+# re-write model to lm not glm
+hba1c_gly_assoc=lm(
+  data = ,
+  formula = 
+)
+
+# Create control model for f-test
+control_model_ftest = lm(
+  data = infections_df,
+  formula = hba1c ~ 1,
+  na.action="na.exclude"
+)
+
+# Run waldtest
+hba1c_gly_F=waldtest(
+  hba1c_gly_assoc,
+  control_model_ftest,
+  vcov = vcovHC(hba1c_gly_assoc, type="HC0")
+)$F[2]
+
+hba1c_gly_F
+
+
+
+#> -------------------------------- MR -------------------------------------- <#
+
+# Create MR df with eid, predicted HbA1c based on linear model, including residuals
+hba1c_gly_frame = data.frame(
+  eid=infections_df$eid,
+  gly_pred=predict(hba1c_gly_assoc,infections_df),
+  gly_resid=residuals(hba1c_gly_assoc,na.action=na.exclude)
+)
+
+# add on baseline data onto our predicted MR df
+hba1c_gly_frame = hba1c_gly_frame %>%
+  inner_join(infections_df) %>%
+  mutate(
+    bacterial_mr = ifelse(
+      bacterial == 1,
+      1,
+      ifelse(
+        control == 1,
+        0,
+        NA
+      )
+    ),
+    viral_mr = ifelse(
+      viral == 1,
+      1,
+      ifelse(
+        control == 1,
+        0,
+        NA
+      )
+    ),
+    fungal_mr = ifelse(
+      fungal == 1,
+      1,
+      ifelse(
+        control == 1,
+        0,
+        NA
+      )
+    )
+  )
+
+#> Iterate through all 3 infections and Run MR
+list = c('bacterial_mr','fungal_mr','viral_mr')
+
+for (item in list){
+  temp2 = glm(
+    paste0(item,"~gly_pred"),
+    data=hba1c_gly_frame,
+    family=binomial
+  )
+  
+  print(
+    export_summs(
+      temp2,
+      confint = TRUE,
+      digits = 2,
+      model.names = paste0(item, " MR model")
+    )
+  )
+}
+```
+
+``` {r Legacy: PLOTTING LM}
+# Extract coefficients from the linear regression model
+intercept = coef(model)["(Intercept)"]
+slope = coef(model)["hba1c_glyc_grs"]
+
+# Add a line to the ggplot
+g1 = ggplot(data = infections_df %>% mutate(hba1c = pmin(hba1c, 120)), aes(x = hba1c, y = hba1c_glyc_grs)) +
+  geom_point() +
+  geom_abline(intercept = intercept, slope = slope) +
+  labs(title = "Scatter Plot with Regression Line")
+
+g2 = ggplot(data = infections_df, aes(x = hba1c, y = hba1c_glyc_grs)) +
+  geom_point() +
+  geom_abline(intercept = intercept, slope = slope) +
+  labs(title = "Scatter Plot with Regression Line")
+
+plot_grid(g1, g2, labels = "AUTO")
+
+```
+
+``` {r LEGACY}
+#> -------------------------- Descriptive Tables ---------------------------- <#
+dir.create('saveables/descriptives')
+
+table = CreateTableOne(
+    data=infections_df,
+    vars = c("assess_age","sex",'whr','glucose','hba1c','hdl_cholesterol','ldl_cholesterol','total_cholesterol','bmi', 'age_diabetes_diagnosed', 'th_grs', 'fg_grs', 'hba1c_glyc_grs', 'hba1c_nonglyc_grs'),
+    strata = "infection_type"
+  )
+
+groups = c('bacterial', 'control', 'fungal', 'mixed', 'viral')
+
+#> Saving continuous variables descriptive tables
+for (type in groups) {
+  write.csv(
+    table$ContTable[[type]],
+    file = paste0("saveables/descriptives/",type, "_con_descriptives.csv")
+  )
+}
+
+#> Saving categorical variables descriptive tables
+for (type in groups) {
+  write.csv(
+    table$CatTable[[type]],
+    file = paste0("saveables/descriptives/",type, "_cat_descriptives.csv")
+  )
+}
+
+
+
+```
