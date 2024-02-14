@@ -10,7 +10,6 @@ output: html_document
 
 #> automated package download and installation
 dependencies = c(
-  'pacman',
   'tidyverse',
   'ggridges',
   'broom',
@@ -20,8 +19,7 @@ dependencies = c(
   'cowplot',
   'lmtest',
   'foreign',
-  'AER',
-  'equatiomatic'
+  'AER'
 )
 install.packages(dependencies)
 lapply(dependencies, library, character.only = TRUE)
@@ -229,6 +227,22 @@ for (var in list_graph_vars) {
 
 #> Clean Environment
 remove(p, plot_data, var)
+```
+
+``` {r Descriptives P Values}
+list_descriptives = c("hba1c", 'glucose', 'bmi')
+list_infections = c('bacterial','fungal','viral')
+
+for (infection in list_infections){
+  print(paste0('looking at infection: ', infection))
+  
+  for (characteristic in list_descriptives){
+    print(paste0('investigating characteristic: ', characteristic))
+    temp = summary(lm(as.formula(paste0(infection, " ~ ", characteristic, " + assess_age + sex")), data = infections_df))
+    print(coef(temp))
+    # print(exp(coef(temp)[2,1]))
+  }
+}
 ```
 
 ``` {r Graph of Control vs Infection}
@@ -440,32 +454,6 @@ export_summs(
 #> Only for exporting in LaTeX
 # extract_eq(hba1c_gly_assoc, wrap = TRUE, use_coefs = TRUE, terms_per_line = 1, coef_digits = 6) 
 
-#> F test?
-
-# re-write model to lm not glm
-hba1c_gly_assoc=lm(
-  data = ,
-  formula = 
-)
-
-# Create control model for f-test
-control_model_ftest = lm(
-  data = infections_df,
-  formula = hba1c ~ 1,
-  na.action="na.exclude"
-)
-
-# Run waldtest
-hba1c_gly_F=waldtest(
-  hba1c_gly_assoc,
-  control_model_ftest,
-  vcov = vcovHC(hba1c_gly_assoc, type="HC0")
-)$F[2]
-
-hba1c_gly_F
-
-
-
 #> -------------------------------- MR -------------------------------------- <#
 
 # Create MR df with eid, predicted HbA1c based on linear model, including residuals
@@ -518,14 +506,16 @@ for (item in list){
     family=binomial
   )
   
-  print(
-    export_summs(
-      temp2,
-      confint = TRUE,
-      digits = 2,
-      model.names = paste0(item, " MR model")
-    )
-  )
+  print(summary(temp2))
+  
+  # print(
+  #   export_summs(
+  #     temp2,
+  #     confint = TRUE,
+  #     digits = 2,
+  #     model.names = paste0(item, " MR model")
+  #   )
+  # )
 }
 ```
 
